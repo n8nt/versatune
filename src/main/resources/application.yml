@@ -1,0 +1,36 @@
+
+
+spring:
+  application:
+    name:
+
+  security:
+    user:
+      name: bobt
+      password: 6499n8nt
+#      name: temp
+#      password: Temp4321
+
+  datasource:
+    #url: jdbc:h2:file:C:/usr/local/apps/btsocket/data/demo
+    url: jdbc:h2:mem:testdb
+    driverClassName: org.h2.Driver
+    username: bobt
+    password: 6499n8nt
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+
+server:
+  port: 9002
+#  ssl:
+#    key-store: /usr/local/apps/conf/keystore1.p12
+#    key-store-password: changeme #6499n8nt
+#    key-store-type: pkcs12
+#    key-alias: to  mcat #n8nt
+#    key-password: changeme #6499n8nt
+#    enabled: true
+#  servlet:
+#    context-path: /
+logging:
+  file:
+    name: "/usr/local/apps/btsocket/logs/demo.log"

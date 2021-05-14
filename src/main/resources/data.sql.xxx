@@ -1,0 +1,2 @@
+INSERT INTO RCVR_SIGNALS (ssi,sqi,snr,per,ready)VALUES
+('','','','',0);
