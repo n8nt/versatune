@@ -34,3 +34,7 @@ server:
 logging:
   file:
     name: "/usr/local/apps/btsocket/logs/demo.log"
+  level:
+    root: ERROR
+    com.tournoux.ws.btsocket.pi4j: trace
+    com.pi4j: debug
