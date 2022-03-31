@@ -33,12 +33,18 @@ public class RcvrStatusController {
     public String getRcvrStatus(@PathVariable String id, @RequestHeader HttpHeaders headers, HttpServletRequest servlet){
     myLog.info("Got status: " + id);
 
-        return "ok";
+        RcvrSignal signal = null;
+        List<RcvrSignal> recs = repo.findAll();
+        StringBuffer sb = new StringBuffer();
+        for (RcvrSignal s : recs){
+            sb.append("["+ signal.getPer() + "], " + "[" + signal.getSnr() + "], " + ", [" + signal.getSqi() + "], " + "[" + signal.getSsi() + "]\n");
+        }
+        return sb.toString();
     }
 
     @RequestMapping(value="/v2", method=RequestMethod.POST,consumes = "application/json", produces = "application/json")
     public DvbtStatus postRcvStatus(@RequestBody DvbtStatus iModel){
-
+        myLog.info("Got your " + iModel.getStatus());
         iModel.setReturnStatus("Got your " + iModel.getStatus());
         return iModel;
     }
@@ -59,6 +65,7 @@ public class RcvrStatusController {
          */
         RcvrSignal signal = null;
         List<RcvrSignal> recs = repo.findAll();
+
         Optional<RcvrSignal> recRef = repo
                 .findAll()
                 .stream()

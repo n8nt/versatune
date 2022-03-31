@@ -1,0 +1,2 @@
+-Dspring.profiles.active=dev -Dspring.spring-additional-location=/usr/local/apps/btsocket/conf/
+-- add the above to java args when starting up the application.

@@ -1,0 +1,15 @@
+package com.tournoux.ws.btsocket.enums;
+
+public enum TunerStatus {
+    TUNER_FOUND,
+    INITIALIZING_TUNER,
+    INITIALIZE_FAILED,
+    TUNER_INITIALIZED,
+    SEARCHING_FOR_SIGNAL,
+    SEARCH_FAILED,
+    SIGNAL_DETECTED_ATTEMPTING_LOCK,
+    SIGNAL_LOCKED,
+    TUNER_UNLOCKED,
+    NO_TUNER_FOUND,
+    EMPTY
+}

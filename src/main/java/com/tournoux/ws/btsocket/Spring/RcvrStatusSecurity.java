@@ -30,7 +30,7 @@ public class RcvrStatusSecurity extends WebSecurityConfigurerAdapter {
                 .authorizeRequests()
                 .antMatchers("/lp**","/webjars/**")
                 .anonymous()
-                .antMatchers("/checkMe","v1/**", "v2/**","v3/**","v4/**")
+                .antMatchers("/checkMe","v1/**", "v2/**","v3/**","v4/**","/h2-console/**")
                 .permitAll()
                 .and()
                 .csrf().disable()

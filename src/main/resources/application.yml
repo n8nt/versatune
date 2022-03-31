@@ -4,6 +4,12 @@ spring:
   application:
     name:
 
+  h2:
+    console:
+      enabled: true
+      settings:
+        web-allow-others: true
+
   security:
     user:
       name: bobt
@@ -15,8 +21,8 @@ spring:
     #url: jdbc:h2:file:C:/usr/local/apps/btsocket/data/demo
     url: jdbc:h2:mem:testdb
     driverClassName: org.h2.Driver
-    username: bobt
-    password: 6499n8nt
+    username: "bobt"
+    password: "6499n8nt"
   jpa:
     database-platform: org.hibernate.dialect.H2Dialect
 
@@ -31,10 +37,10 @@ server:
 #    enabled: true
 #  servlet:
 #    context-path: /
-logging:
-  file:
-    name: "/usr/local/apps/btsocket/logs/demo.log"
-  level:
-    root: ERROR
-    com.tournoux.ws.btsocket.pi4j: trace
-    com.pi4j: debug
+#logging:
+#  file:
+#    name: "/usr/local/apps/btsocket/logs/demo.log"
+#  level:
+#    root: ERROR
+#    com.tournoux.ws.btsocket.pi4j: trace
+#    com.pi4j: debug

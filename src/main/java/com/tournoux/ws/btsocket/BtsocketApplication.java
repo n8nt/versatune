@@ -1,6 +1,7 @@
 package com.tournoux.ws.btsocket;
 
-import com.tournoux.ws.btsocket.pi4j.Pi4jMinimal;
+import com.tournoux.ws.btsocket.background.DvbtWorker;
+import com.tournoux.ws.btsocket.background.GpioWorker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,16 +11,21 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.context.ApplicationPidFileWriter;
 import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.task.TaskExecutor;
 
 @SpringBootApplication
 public class BtsocketApplication extends SpringBootServletInitializer {
 
-    Logger APP_LOG = LoggerFactory.getLogger(getClass());
-
+    Logger logger = LoggerFactory.getLogger(getClass());
 
     @Autowired
-    Pi4jMinimal manager;
+    private TaskExecutor taskExecutor;
+
+    @Autowired
+    private ApplicationContext applicationContext;
 
     @Override
     protected SpringApplicationBuilder configure(SpringApplicationBuilder application) {
@@ -28,6 +34,7 @@ public class BtsocketApplication extends SpringBootServletInitializer {
 
     public static void main(String[] args) {
 
+        ApplicationContext context = new AnnotationConfigApplicationContext(BtsocketApplication.class);
         SpringApplication app = new SpringApplication(BtsocketApplication.class);
         app.addListeners(new ApplicationPidFileWriter());
         app.run(args);
@@ -36,19 +43,20 @@ public class BtsocketApplication extends SpringBootServletInitializer {
     @Bean
     CommandLineRunner init() {
 
+
+
         return new CommandLineRunner() {
             @Override
             public void run(String... args) throws Exception {
 
-                Pi4jMinimal manager = new Pi4jMinimal();
-                try {
-                    manager.manageGpios();
-                    APP_LOG.info("We are running.");
-                }catch(Exception e){
-                    APP_LOG.error("Well, shucks, Guss, there is an error. " + e.getMessage());
-                }
+                DvbtWorker dvbtWorkeer = applicationContext.getBean(DvbtWorker.class);
+                GpioWorker gpioWorker = applicationContext.getBean(GpioWorker.class);
+                taskExecutor.execute(dvbtWorkeer);
+                taskExecutor.execute(gpioWorker);
+
             }
         };
     }
+
 
 }

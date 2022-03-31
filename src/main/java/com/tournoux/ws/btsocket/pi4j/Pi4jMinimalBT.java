@@ -41,7 +41,7 @@ import org.springframework.stereotype.Component;
  * @version $Id: $Id
  */
 @Component
-public class Pi4jMinimal {
+public class Pi4jMinimalBT {
 
 //    private static final int PIN_BUTTON = 24; // PIN 18 = BCM 24
 //    private static final int PIN_LED = 22; // PIN 15 = BCM 22
@@ -114,9 +114,10 @@ public class Pi4jMinimal {
         // approach, we print out the info of these. This can be removed
         // from your own application.
         // OPTIONAL
-        PrintInfo.printLoadedPlatforms(console, pi4j);
-        PrintInfo.printDefaultPlatform(console, pi4j);
-        PrintInfo.printProviders(console, pi4j);
+        // removed by Bob since this prints out a lot of stuff we don't need anymore.
+        // PrintInfo.printLoadedPlatforms(console, pi4j);
+        //  PrintInfo.printDefaultPlatform(console, pi4j);
+        //  PrintInfo.printProviders(console, pi4j);
 
         // Here we will create I/O interfaces for a (GPIO) digital output
         // and input pin. Since no specific 'provider' is defined, Pi4J will
