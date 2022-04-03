@@ -15,20 +15,20 @@ public class DisplayMessage {
 
         List<String> commandList = new ArrayList<>();
         StringBuffer sb = new StringBuffer("sudo convert -size 1280x720 xc:black -stroke white ");
-        sb.append("-gravity NorthWest -pointsize 40 -annotate 0 ");
-        sb.append("\"Versatune Interim DVB-T Receiver\n\n");
+        sb.append(" -gravity NorthWest -pointsize 40 -annotate 0 ");
+        sb.append("\" Versatune Interim DVB-T Receiver\n\n");
         sb.append(message);
         sb.append("\" /home/pi/tmp/message.jpg");
 
         commandList.add("#!/bin/bash -x");
-        commandList.add("cd /home/tmp");
+        commandList.add("cd /home/pi/tmp");
         commandList.add("sudo rm /home/pi/tmp/message.jpg >/dev/null 2>/dev/null");
         commandList.add(sb.toString());
-        commandList.add("sleep 1s");
+        commandList.add("sleep 0.1");
         // display on the screen
-        commandList.add("sudo fbi -T 1 -noverbose -a /home/pi/tmp/message.jpg >/dev/null 2>/dev/null");
+        commandList.add(" sudo fbi -T 1 -noverbose -a /home/pi/tmp/message.jpg >/dev/null 2>/dev/null");
         // sleep a while then kill fbi
-        commandList.add("sleep 0.1; sudo killall -9 fbi >/dev/null 2>/dev/null) &");
+        commandList.add("sleep 0.1; sudo killall -9 fbi >/dev/null 2>/dev/null &");
         try{
             executeCommandList(commandList);
         }catch(Exception e){
@@ -39,12 +39,12 @@ public class DisplayMessage {
     public void executeCommands() throws IOException {
 
         File tempScript = createTempScript();
-        logger.info("creating and starting the process.");
+        if (logger.isTraceEnabled()) logger.trace("creating and starting the process.");
         try {
             ProcessBuilder pb = new ProcessBuilder("bash", tempScript.toString());
             pb.inheritIO();
             Process process = pb.start();
-            logger.info("Process started... " + process.info());
+            if (logger.isTraceEnabled()) logger.trace("Process started... " + process.info());
             process.waitFor();
         }catch (InterruptedException ie){
             logger.error("Caught interrupted exception. Not sure what to do. " + ie.getMessage());
@@ -53,15 +53,23 @@ public class DisplayMessage {
         }
     }
 
+    /*
+            When vlc is not active, then we send messages to the screen.
+    */
     public void executeCommandList(List<String> commandList) throws IOException{
         File tempScript = createTempScriptFromCommandList(commandList);
-        logger.info("creating and starting the process to execute a commandlist.");
+        if (logger.isTraceEnabled()) logger.trace("creating and starting the process to execute a commandlist.");
+
+        if (logger.isTraceEnabled()) logger.trace("Executing script: " + tempScript.toString());
         try {
             ProcessBuilder pb = new ProcessBuilder("bash", tempScript.toString());
             pb.inheritIO();
             Process process = pb.start();
-            logger.info("Process started... " + process.info());
-            process.waitFor();
+            if (logger.isTraceEnabled()) logger.trace("Process started... " + process.info());
+            int exitCode = process.waitFor();
+            if (exitCode != 0){
+                logger.info("*** Script did NOT run properly.");
+            }
         }catch (InterruptedException ie){
             logger.error("Caught interrupted exception. Not sure what to do. " + ie.getMessage());
         } finally {
@@ -71,7 +79,7 @@ public class DisplayMessage {
     }
 
     public File createTempScript() throws IOException {
-        logger.info("creating the temporary script file.");
+        if (logger.isTraceEnabled()) logger.trace("creating the temporary script file.");
         File tempScript = File.createTempFile("script", null);
 
         Writer streamWriter = new OutputStreamWriter(new FileOutputStream(
@@ -89,7 +97,7 @@ public class DisplayMessage {
     }
 
     public File createTempScriptFromCommandList(List<String> commands) throws IOException {
-        logger.info("creating the temporary script file from command list.");
+        if (logger.isTraceEnabled()) logger.trace("creating the temporary script file from command list.");
         File tempScript = File.createTempFile("scriptX", null);
         Writer streamWriter = new OutputStreamWriter(new FileOutputStream(
                 tempScript));

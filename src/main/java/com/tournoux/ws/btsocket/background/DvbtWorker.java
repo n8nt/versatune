@@ -1,5 +1,6 @@
 package com.tournoux.ws.btsocket.background;
 
+import org.apache.commons.io.FilenameUtils;
 import com.sun.jna.Library;
 import com.sun.jna.Native;
 import com.tournoux.ws.btsocket.enums.TunerStatus;
@@ -12,7 +13,10 @@ import org.springframework.stereotype.Component;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+
+
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,6 +32,7 @@ public class DvbtWorker implements Runnable {
         this.repo = repo;
         this.displayMessage = displayMessage;
     }
+    List<String> allowedExtensions = Arrays.asList("jpeg", "mp4", "png", "jpg", "gif");
 
     int O_RDONLY = 0x0000;
     int O_WRONLY = 0x0001;
@@ -50,39 +55,50 @@ public class DvbtWorker implements Runnable {
     @Override
     public void run() {
         logger.info("Running DvbtWorker");
+        int finishedButton = 1;
+        boolean tunerFound = false;
+        boolean tunerLocked = false;
+        boolean tunerInitialized = false;
+        boolean tunerStreamActive = false;
+        boolean slideShowRunning = false;
+        boolean displayWanted = true;       // we want to display info on screen when VLC not running
+        int tunerFreq = 0;
+        int tunerBW = 0;
 
 
         // System.setProperty("jna.library.path","/usr/lib/cgi-bin/jna");
         StdC libc = StdC.INSTANCE;
         int fd_status_fifo = -1;
         try{
-            logger.info("Running Fifo CommandLine Runner");
+            // need another while loop around this that determines if this tuner should be running
+
+            logger.trace("Running Fifo CommandLine Runner");
+            // this starts up VLC and Combituner for DVBT
             executeCommands();
             //wait to make sure Combituner starts up and fifo is ready
             Thread.sleep((5000));
-            logger.info("trying to call a c library function.");
+            logger.trace("trying to call a c library function.");
+            displayWanted  = true;
 
             // let us try to use JNA here to access the std c library.
             String fifoPath = "/home/pi/dvbt/knucker_status_fifo";
             byte[] buffer = new byte[1024];
 
+            logger.trace("Am just about to open the fifo");
 
-            logger.info("Am just about to open the fifo");
-//            fd_status_fifo = libc.open("/home/pi/knucker_status_fifo",O_RDWR);
-//            logger.info("opened for RD-WR");
-//            libc.close(fd_status_fifo);
             fd_status_fifo = libc.open("/home/pi/knucker_status_fifo", O_RDONLY);
-            logger.info("Fifo is open and fd_status_fifo is " + fd_status_fifo);
+            logger.trace("Fifo is open and fd_status_fifo is " + fd_status_fifo);
             // Set the status fifo to be non-blocking on empty reads
-            logger.info("trying to set file to O_NONBLOCK");
+            logger.trace("trying to set file to O_NONBLOCK");
             int errorValue = libc.fcntl(fd_status_fifo, F_SETFL, O_NONBLOCK);
-            logger.info("fcntl returned a " + errorValue);
+            logger.trace("fcntl returned a " + errorValue);
 
             if (fd_status_fifo < 0)  // failed to open
             {
                 logger.error("Failed to open knucker status fifo\n");
                 return;
             }
+            // preparing here to see if anything coming in on this tuner
             int PollCount = 0;
             byte[] inputBuffer = new byte[50];
             StringBuffer line = new StringBuffer();
@@ -92,7 +108,7 @@ public class DvbtWorker implements Runnable {
                 if (num < 0) {
                     Thread.sleep(500);
                     PollCount++;
-                    logger.info("PollCount is: " + PollCount);
+                    if (logger.isTraceEnabled()) logger.trace("PollCount is: " + PollCount);
                     if (PollCount > 120) {
                         logger.info("60 seconds since we saw any data. Exiting.");
                         PollCount = 0;
@@ -106,10 +122,33 @@ public class DvbtWorker implements Runnable {
                             logger.trace("inputString is: " + inputString.substring(0, 1) + " [" + buffer[0] + "] ");
                         if (inputString.substring(0, 1).equals("\n") || buffer[0] == 10) {
                             // we have an end of line
-                            logger.info(line.toString());
-                            int responseStatus = processResponse(line.toString());
+                            if (logger.isTraceEnabled()) logger.trace(line.toString());
+                            int responseStatus = processResponse(line.toString(), displayWanted);
                             line = new StringBuffer();
                             // process this request.
+                            if ( responseStatus == TunerStatus.TUNER_UNLOCKED.ordinal()){
+                                // turn on the slide show for 10 seconds
+                                if (!slideShowRunning){
+                                    logger.info("Running Slide Show");
+                                    displayWanted = false;
+                                    runSlideShow();
+                                    slideShowRunning = true;
+                                }
+                                displayWanted = false;
+                                logger.info("TUNER now UNLOCKED. Display messages on big screen.");
+                            }else if(responseStatus == TunerStatus.SIGNAL_LOCKED.ordinal()){
+                                if (slideShowRunning){
+                                    logger.info("shut down slide show");
+                                    stopSlideShow();
+                                    //Thread.sleep(1000);
+                                    slideShowRunning = false;
+                                    logger.info("restart streaming of the tuner");
+                                    startTunerStream();
+
+                                }
+                                displayWanted = true; // only want to display big letters on screen when no VLC
+                                logger.info("TURNED OFF DisplayMessage text because SIGNAL is LOCKED.");
+                            }
 
                         } else {
                             line.append(inputString.substring(0, 1));
@@ -134,31 +173,128 @@ public class DvbtWorker implements Runnable {
         logger.info("we are done.");
     }
 
+    private void stopSlideShow(){
 
-    private int processResponse(String response){
-        logger.info("processResponse: ENTERED.");
+        List<String> commandList = new ArrayList<>();
+        StringBuffer sb = new StringBuffer("#!/bin/bash \n");
+        sb.append("sudo killall vlc >/dev/null 2>/dev/null \n");
+        sb.append("sleep 1s\n");
+
+        commandList.add(sb.toString());
+        try{
+            displayMessage.executeCommandList(commandList);
+        }catch(Exception e){
+            logger.error("ERROR: could not execute the script to stop the slide show.");
+        }
+    }
+
+    private void startTunerStream(){
+        List<String> commandList = new ArrayList<>();
+        commandList.add("#!/bin/bash \n");
+        commandList.add("cd /home/pi/dvbt");
+        commandList.add("su -c '/home/pi/dvbt/dvb-t_start_tuner_udp.sh' pi &");
+        try{
+            displayMessage.executeCommandList(commandList);
+        }catch(Exception e){
+            logger.error("ERROR: could not execute the script to start the Tuner Stream.");
+        }
+    }
+
+    private void runSlideShow(){
+        List<String> commandList = new ArrayList<>();
+
+        StringBuffer sb = new StringBuffer("#!/bin/bash \n");
+        commandList.add(sb.toString());
+        commandList.add("cd /usr/local/apps/btsocket/images/ \n");
+        commandList.add("sudo killall vlc >/dev/null 2>/dev/null \n");
+        commandList.add("sleep 0.1 \n");
+        sb = new StringBuffer("su -c 'cvlc ffmpeg  --codec h264_v4l2m2m --no-video-title-show ");
+
+        File[] files = new File("/usr/local/apps/btsocket/images").listFiles();
+        for(File file : files){
+            if(file.isFile()){
+                // check to make sure file is one of the allowed extensions
+                String extension = FilenameUtils.getExtension(file.getName());
+                if (allowedExtensions.contains(extension.toLowerCase())){
+                    sb.append("file:///usr/local/apps/btsocket/images/" + file.getName() + " ");
+                }
+            }
+        }
+        if (null == files ||  files.length < 1){
+            sb.append("file:///home/pi/MyGrandPianoInItsNewHome.jpeg");
+        }
+        // to get current hdmi screen resolution
+        //  cat /sys/class/graphics/fb0/virtual_size
+        // ours is 1920 x 1080
+        sb.append(" -L' pi &\n");
+
+        commandList.add(sb.toString());
+        try{
+            displayMessage.executeCommandList(commandList);
+        }catch(Exception e){
+            logger.error("ERROR: could not execute the script to  start the slide show.");
+        }
+    }
+
+    private int processResponse(String response, boolean displayWanted){
+        if (logger.isTraceEnabled()) logger.trace("processResponse: ENTERED.");
         int status = -1;
+        String messageText = "";
         if (response.equals("[GetFamilyId] Family ID:0x4955")){
-            logger.info("Initializing Tuner, Please Wait.");
-            displayMessage.dsiplayMessageText("Initializing Tuner, Please Wait.");
-
+            if (logger.isTraceEnabled()) logger.trace("Initializing Tuner, Please Wait.");
+            messageText = "Initializing Tuner, Please Wait.";
             status = TunerStatus.INITIALIZING_TUNER.ordinal();
         }else if(response.equals("[GetChipId] chip id:AVL6862")){
-            logger.info("Found Knucker Tuner");
-            displayMessage.dsiplayMessageText("Found Versatune.");
+            if (logger.isTraceEnabled()) logger.trace("Found Knucker Tuner");
+            messageText = "Found Versatune.";
             status = TunerStatus.TUNER_FOUND.ordinal();
         }else if(response.equals("[AVL_Init] AVL_Initialize Failed!")){
-            logger.info("Failed to initialize tuner. Change USB Cable.");
-            displayMessage.dsiplayMessageText("Failed to iniialize tuner. Change USB Cable.");
+            if (logger.isTraceEnabled()) logger.trace("Failed to initialize tuner. Change USB Cable.");
+            messageText = "Failed to iniialize tuner. Change USB Cable.";
             status = TunerStatus.INITIALIZE_FAILED.ordinal();
         }else if(response.equals("[AVL_Init] ok")){
-            logger.info("Tuner Initialized.");
-            displayMessage.dsiplayMessageText("Tuner Initialized.");
+            if (logger.isTraceEnabled()) logger.trace("Tuner Initialized.");
+            messageText = "Tuner Initialized.";
             status = TunerStatus.TUNER_INITIALIZED.ordinal();
         }else if(response.equals("Tuner not found")){
-            logger.info("Please connect a Versatune Tuner");
-            displayMessage.dsiplayMessageText("Please connect a Versatune Tuner.");
+            if (logger.isTraceEnabled()) logger.trace("Please connect a Versatune Tuner");
+            messageText = "Please connect a Versatune Tuner.";
             status = TunerStatus.NO_TUNER_FOUND.ordinal();
+        }else if(response.equals("locked")){
+            if (logger.isTraceEnabled()) logger.trace("Tuner Locked");
+            messageText = "Signal locked";
+            status = TunerStatus.SIGNAL_LOCKED.ordinal();
+        }else if(response.contains("=== Freq")){
+            String freq = response.substring(11);
+            if (logger.isTraceEnabled()) logger.trace("Tuner Frequency is: "+ freq);
+            messageText = "Tuner Frequency is: "+ freq;
+            status = TunerStatus.NEW_FREQ_DATA.ordinal();
+        }else if(response.contains("=== Bandwidth")){
+            String bandwidth = response.substring(17);
+            if (logger.isTraceEnabled()) logger.trace("Tuner Bandwidth is: "+ bandwidth);
+            messageText = "Tuner Bandwidth is: "+ bandwidth;
+            status = TunerStatus.NEW_BW_DATA.ordinal();
+        }else if(response.contains("[AVL_ChannelScan_Tx] Freq")){
+            String bandwidth = response.substring(17);
+            if (logger.isTraceEnabled()) logger.trace("Searching for signal");
+            messageText = "Searching for signal";
+            status = TunerStatus.SEARCHING_FOR_SIGNAL.ordinal();
+        }else if(response.contains("[DVBTx_Channel_ScanLock_Example] DVBTx channel scan is fail,Err.")){
+            String bandwidth = response.substring(17);
+            if (logger.isTraceEnabled()) logger.trace("Search failed, resetting for another search");
+            messageText = "Search failed, resetting for another search";
+            status = TunerStatus.SEARCH_FAILED_RESETTING_FOR_NEW_SEARCH.ordinal();
+        }else if(response.contains("[AVL_LockChannel_T] Freq ")){
+            if (logger.isTraceEnabled()) logger.trace("Signal detected, attempting to lock");
+            messageText = "Signal detected, attempting to lock";
+            status = TunerStatus.SIGNAL_DETECTED_ATTEMPTING_LOCK.ordinal();
+        }else if(response.contains("Unlocked")){
+            if (logger.isTraceEnabled()) logger.trace("Tuner Unlocked");
+            messageText = "Tuner Unlocked";
+            status = TunerStatus.TUNER_UNLOCKED.ordinal();
+        }
+        if ( displayWanted ){
+            displayMessage.dsiplayMessageText(messageText);
         }
         if (response.length() > 3){
             String result = processTunerInputData(response);
@@ -166,13 +302,13 @@ public class DvbtWorker implements Runnable {
                 updateVlcOverlayText(result);
             }
         }
-        logger.info("processResponse: Exiting");
+        if (logger.isTraceEnabled()) logger.trace("processResponse: Exiting");
         return status;
     }
 
     public void updateVlcOverlayText(String text){
         int len = text.length();
-        logger.info("In updateVlcOverlayText with text: " + text);
+        if (logger.isTraceEnabled()) logger.trace("In updateVlcOverlayText with text: " + text);
         if ( text.startsWith("-> ")){
             String overlayText = text.substring(3);
             byte[] buffer = new byte[255];
@@ -181,7 +317,7 @@ public class DvbtWorker implements Runnable {
             int fd = libc.open("/home/pi/bob/vlc_overlay.txt", O_RDWR | O_CREAT);
             if (overlayText.length() > 0) {
                 int count = libc.write(fd, buffer, buffer.length);
-                logger.info("wrote " + count + " bytes - " + overlayText);
+                if (logger.isTraceEnabled()) logger.trace("wrote " + count + " bytes - " + overlayText);
             }
         }
     }
@@ -189,12 +325,12 @@ public class DvbtWorker implements Runnable {
     public void executeCommands() throws IOException {
 
         File tempScript = createTempScript();
-        logger.info("creating and starting the process.");
+        if (logger.isTraceEnabled()) logger.trace("creating and starting the process.");
         try {
             ProcessBuilder pb = new ProcessBuilder("bash", tempScript.toString());
             pb.inheritIO();
             Process process = pb.start();
-            logger.info("Process started... " + process.info());
+            if (logger.isTraceEnabled()) logger.trace("Process started... " + process.info());
             process.waitFor();
         }catch (InterruptedException ie){
             logger.error("Caught interrupted exception. Not sure what to do. " + ie.getMessage());
@@ -204,7 +340,7 @@ public class DvbtWorker implements Runnable {
     }
 
     public File createTempScript() throws IOException {
-        logger.info("creating the temporary script file.");
+        if (logger.isTraceEnabled()) logger.trace("creating the temporary script file.");
         File tempScript = File.createTempFile("script", null);
 
         Writer streamWriter = new OutputStreamWriter(new FileOutputStream(
@@ -223,7 +359,7 @@ public class DvbtWorker implements Runnable {
 
     private String processTunerInputData(String iModel)
     {
-        logger.info("Entering processTunerInputData");
+        if (logger.isTraceEnabled()) logger.trace("Entering processTunerInputData");
         RcvrSignal signal = null;
         List<RcvrSignal> recs = repo.findAll();
 
@@ -296,7 +432,7 @@ public class DvbtWorker implements Runnable {
                 repo.deleteInBatch(batch);
             }
         }
-        logger.info("Exiting processTunerInputData: " + result);
+        if (logger.isTraceEnabled()) logger.trace("Exiting processTunerInputData: " + result);
         return result;
     }
 
