@@ -44,3 +44,18 @@ server:
 #    root: ERROR
 #    com.tournoux.ws.btsocket.pi4j: trace
 #    com.pi4j: debug
+
+# threading constants
+slideShowStreamExecutor:
+  corePoolSize: 4
+  maxPoolSize: 16
+  queueCapacity: 64
+  poolTimeToLive: 60
+  poolNamePrefix: slideshow
+
+tunerStreamExecutor:
+  corePoolSize: 4
+  maxPoolSize: 16
+  queueCapacity: 64
+  poolTimeToLive: 60
+  poolNamePrefix: tuner

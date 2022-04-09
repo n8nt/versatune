@@ -1,6 +1,5 @@
 package com.tournoux.ws.btsocket.background;
 
-import org.apache.commons.io.FilenameUtils;
 import com.sun.jna.Library;
 import com.sun.jna.Native;
 import com.tournoux.ws.btsocket.enums.TunerStatus;
@@ -9,12 +8,12 @@ import com.tournoux.ws.btsocket.repo.RcvrSignalRepository;
 import com.tournoux.ws.btsocket.screenutils.DisplayMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationContext;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Component;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -26,11 +25,18 @@ public class DvbtWorker implements Runnable {
 
     private final RcvrSignalRepository repo;
     private final DisplayMessage displayMessage;
+    private final ApplicationContext context;
+    private final TaskExecutor executor;
 
     public DvbtWorker(RcvrSignalRepository repo,
-                      DisplayMessage displayMessage){
+                      DisplayMessage displayMessage,
+                      ApplicationContext context,
+                      TaskExecutor executor
+    ){
         this.repo = repo;
         this.displayMessage = displayMessage;
+        this.context = context;
+        this.executor = executor;
     }
     List<String> allowedExtensions = Arrays.asList("jpeg", "mp4", "png", "jpg", "gif");
 
@@ -102,6 +108,9 @@ public class DvbtWorker implements Runnable {
             int PollCount = 0;
             byte[] inputBuffer = new byte[50];
             StringBuffer line = new StringBuffer();
+            int tunerAliveHits = 0;
+            tunerStreamActive = false;
+
             while (true) {
                 int num = libc.read(fd_status_fifo, buffer, 1);
                 if (logger.isTraceEnabled()) logger.trace("NUM is " + num);
@@ -122,34 +131,46 @@ public class DvbtWorker implements Runnable {
                             logger.trace("inputString is: " + inputString.substring(0, 1) + " [" + buffer[0] + "] ");
                         if (inputString.substring(0, 1).equals("\n") || buffer[0] == 10) {
                             // we have an end of line
-                            if (logger.isTraceEnabled()) logger.trace(line.toString());
+                            logger.info(line.toString());
                             int responseStatus = processResponse(line.toString(), displayWanted);
                             line = new StringBuffer();
                             // process this request.
+                            if ( responseStatus == TunerStatus.SSI_FOUND.ordinal() ||
+                                 responseStatus == TunerStatus.PER_FOUND.ordinal() ||
+                                 responseStatus == TunerStatus.SQI_FOUND.ordinal() ||
+                                 responseStatus == TunerStatus.SNR_FOUND.ordinal() ||
+                                 responseStatus == TunerStatus.MOD_FOUND.ordinal()
+                            ){
+                                if (!tunerStreamActive){
+                                    startTunerStream2();
+                                    tunerStreamActive = true;
+                                    slideShowRunning = true;
+                                }
+                            }else if ( responseStatus == TunerStatus.SEARCH_FAILED_RESETTING_FOR_NEW_SEARCH.ordinal()){
+                                if (!slideShowRunning){
+                                    logger.info("Running Slide Show");
+                                    startSlideShow2();
+                                    slideShowRunning = true;
+                                    tunerStreamActive = false;
+                                }
+                            }
                             if ( responseStatus == TunerStatus.TUNER_UNLOCKED.ordinal()){
                                 // turn on the slide show for 10 seconds
                                 if (!slideShowRunning){
                                     logger.info("Running Slide Show");
-                                    displayWanted = false;
-                                    runSlideShow();
+                                    startSlideShow2();
                                     slideShowRunning = true;
+                                    tunerStreamActive = false;
                                 }
-                                displayWanted = false;
-                                logger.info("TUNER now UNLOCKED. Display messages on big screen.");
                             }else if(responseStatus == TunerStatus.SIGNAL_LOCKED.ordinal()){
-                                if (slideShowRunning){
-                                    logger.info("shut down slide show");
-                                    stopSlideShow();
-                                    //Thread.sleep(1000);
-                                    slideShowRunning = false;
+                                if (!tunerStreamActive){
                                     logger.info("restart streaming of the tuner");
-                                    startTunerStream();
-
+                                  //  startTunerStream();
+                                    startTunerStream2();
+                                    tunerStreamActive = true;
+                                    slideShowRunning = false;
                                 }
-                                displayWanted = true; // only want to display big letters on screen when no VLC
-                                logger.info("TURNED OFF DisplayMessage text because SIGNAL is LOCKED.");
                             }
-
                         } else {
                             line.append(inputString.substring(0, 1));
                         }
@@ -173,67 +194,22 @@ public class DvbtWorker implements Runnable {
         logger.info("we are done.");
     }
 
-    private void stopSlideShow(){
 
-        List<String> commandList = new ArrayList<>();
-        StringBuffer sb = new StringBuffer("#!/bin/bash \n");
-        sb.append("sudo killall vlc >/dev/null 2>/dev/null \n");
-        sb.append("sleep 1s\n");
 
-        commandList.add(sb.toString());
-        try{
-            displayMessage.executeCommandList(commandList);
-        }catch(Exception e){
-            logger.error("ERROR: could not execute the script to stop the slide show.");
-        }
+    /*
+            Need this to be a future and have the future return true when the stream is running
+            then we can set the stream active to true.
+     */
+    private void startTunerStream2(){
+        StartTunerStreamTask t = new StartTunerStreamTask();
+        executor.execute(t);
     }
 
-    private void startTunerStream(){
-        List<String> commandList = new ArrayList<>();
-        commandList.add("#!/bin/bash \n");
-        commandList.add("cd /home/pi/dvbt");
-        commandList.add("su -c '/home/pi/dvbt/dvb-t_start_tuner_udp.sh' pi &");
-        try{
-            displayMessage.executeCommandList(commandList);
-        }catch(Exception e){
-            logger.error("ERROR: could not execute the script to start the Tuner Stream.");
-        }
-    }
 
-    private void runSlideShow(){
-        List<String> commandList = new ArrayList<>();
 
-        StringBuffer sb = new StringBuffer("#!/bin/bash \n");
-        commandList.add(sb.toString());
-        commandList.add("cd /usr/local/apps/btsocket/images/ \n");
-        commandList.add("sudo killall vlc >/dev/null 2>/dev/null \n");
-        commandList.add("sleep 0.1 \n");
-        sb = new StringBuffer("su -c 'cvlc ffmpeg  --codec h264_v4l2m2m --no-video-title-show ");
-
-        File[] files = new File("/usr/local/apps/btsocket/images").listFiles();
-        for(File file : files){
-            if(file.isFile()){
-                // check to make sure file is one of the allowed extensions
-                String extension = FilenameUtils.getExtension(file.getName());
-                if (allowedExtensions.contains(extension.toLowerCase())){
-                    sb.append("file:///usr/local/apps/btsocket/images/" + file.getName() + " ");
-                }
-            }
-        }
-        if (null == files ||  files.length < 1){
-            sb.append("file:///home/pi/MyGrandPianoInItsNewHome.jpeg");
-        }
-        // to get current hdmi screen resolution
-        //  cat /sys/class/graphics/fb0/virtual_size
-        // ours is 1920 x 1080
-        sb.append(" -L' pi &\n");
-
-        commandList.add(sb.toString());
-        try{
-            displayMessage.executeCommandList(commandList);
-        }catch(Exception e){
-            logger.error("ERROR: could not execute the script to  start the slide show.");
-        }
+    private void startSlideShow2(){
+        StartSlideShowTask t = new StartSlideShowTask();
+        executor.execute(t);
     }
 
     private int processResponse(String response, boolean displayWanted){
@@ -292,7 +268,32 @@ public class DvbtWorker implements Runnable {
             if (logger.isTraceEnabled()) logger.trace("Tuner Unlocked");
             messageText = "Tuner Unlocked";
             status = TunerStatus.TUNER_UNLOCKED.ordinal();
+        }else if( response.contains("[AVL_LockChannel_T] Freq is 423 MHz, Bandwidth is 2.000000 MHz, Layer Info is 1 (0 : LP; 1 : HP)")){
+            messageText = "[AVL_LockChannel]";
+            status = TunerStatus.TUNER_ONLINE.ordinal();
+        }else if( response.contains("MOD  :")){
+            messageText = response;
+            status = TunerStatus.MOD_FOUND.ordinal();
+        }else if( response.contains("FFT  :")){
+            messageText = response;
+            status = TunerStatus.MOD_FOUND.ordinal();
+        }else if( response.contains("Const:")){
+            messageText = response;
+            status = TunerStatus.MOD_FOUND.ordinal();
+        }else if( response.contains("FEC  :")){
+            messageText = response;
+            status = TunerStatus.FEC_FOUND.ordinal();
+        }else if( response.contains("SSI is")){
+            messageText = response;
+            status = TunerStatus.SSI_FOUND.ordinal();
+        }else if( response.contains("SQI is")){
+            messageText = response;
+            status = TunerStatus.SQI_FOUND.ordinal();
+        }else if( response.contains("SNR is")){
+            messageText = response;
+            status = TunerStatus.SNR_FOUND.ordinal();
         }
+        displayWanted  = false; // see if this is causing us delay
         if ( displayWanted ){
             displayMessage.dsiplayMessageText(messageText);
         }
@@ -319,11 +320,11 @@ public class DvbtWorker implements Runnable {
                 int count = libc.write(fd, buffer, buffer.length);
                 if (logger.isTraceEnabled()) logger.trace("wrote " + count + " bytes - " + overlayText);
             }
+            libc.close(fd);
         }
     }
 
     public void executeCommands() throws IOException {
-
         File tempScript = createTempScript();
         if (logger.isTraceEnabled()) logger.trace("creating and starting the process.");
         try {

@@ -28,13 +28,12 @@ public class DisplayMessage {
         // display on the screen
         commandList.add(" sudo fbi -T 1 -noverbose -a /home/pi/tmp/message.jpg >/dev/null 2>/dev/null");
         // sleep a while then kill fbi
-        commandList.add("sleep 0.1; sudo killall -9 fbi >/dev/null 2>/dev/null &");
+        commandList.add("sleep 0.1; sudo killall -9 fbi >/dev/null 2>/dev/null");   // remove run in background at end
         try{
             executeCommandList(commandList);
         }catch(Exception e){
-            logger.error("ERROR: could not execute the script to display the message text.");
+            logger.error("ERROR: could not execute the script to display the message text.", e.getMessage());
         }
-
     }
     public void executeCommands() throws IOException {
 
@@ -69,6 +68,7 @@ public class DisplayMessage {
             int exitCode = process.waitFor();
             if (exitCode != 0){
                 logger.info("*** Script did NOT run properly.");
+                logger.info("   ERRORCODE = exitCode");
             }
         }catch (InterruptedException ie){
             logger.error("Caught interrupted exception. Not sure what to do. " + ie.getMessage());

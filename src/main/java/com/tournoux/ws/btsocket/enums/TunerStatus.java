@@ -13,5 +13,14 @@ public enum TunerStatus {
     NO_TUNER_FOUND,
     NEW_FREQ_DATA,
     NEW_BW_DATA,
+    TUNER_ONLINE,
+    MOD_FOUND,
+    SSI_FOUND,
+    PER_FOUND,
+    SQI_FOUND,
+    SNR_FOUND,
+    CONST_FOUND,
+    FEC_FOUND,
+    GUARD_FOUND,
     EMPTY
 }

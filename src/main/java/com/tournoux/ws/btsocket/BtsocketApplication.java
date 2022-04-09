@@ -17,12 +17,19 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.core.task.TaskExecutor;
 
 @SpringBootApplication
+
 public class BtsocketApplication extends SpringBootServletInitializer {
 
     Logger logger = LoggerFactory.getLogger(getClass());
 
     @Autowired
     private TaskExecutor taskExecutor;
+
+//    @Autowired
+//    DvbtThreadConfig dvbtConfig;
+//
+//    @Autowired
+//    GpioThreadConfig gpioConfig;
 
     @Autowired
     private ApplicationContext applicationContext;
@@ -43,8 +50,6 @@ public class BtsocketApplication extends SpringBootServletInitializer {
     @Bean
     CommandLineRunner init() {
 
-
-
         return new CommandLineRunner() {
             @Override
             public void run(String... args) throws Exception {
@@ -53,6 +58,10 @@ public class BtsocketApplication extends SpringBootServletInitializer {
                 GpioWorker gpioWorker = applicationContext.getBean(GpioWorker.class);
                 taskExecutor.execute(dvbtWorkeer);
                 taskExecutor.execute(gpioWorker);
+//                @Async(value="Dvbt-task-executor")
+//                dvbtConfig.threadPoolTaskExecutor().execute(dvbtWorkeer);
+//                gpioConfig.threadPoolTaskExecutor().execute(gpioWorker);
+
 
             }
         };
