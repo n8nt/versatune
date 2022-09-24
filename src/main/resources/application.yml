@@ -1,4 +1,5 @@
-
+versatune:
+  build: 202208071701
 
 spring:
   application:
@@ -35,8 +36,8 @@ server:
 #    key-alias: to  mcat #n8nt
 #    key-password: changeme #6499n8nt
 #    enabled: true
-#  servlet:
-#    context-path: /
+  servlet:
+    context-path: /
 #logging:
 #  file:
 #    name: "/usr/local/apps/btsocket/logs/demo.log"

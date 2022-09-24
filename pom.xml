@@ -5,13 +5,13 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>2.4.5</version>
+        <version>2.7.2</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <groupId>com.tournoux.ws</groupId>
-    <artifactId>btsocket</artifactId>
-    <version>1.0.1</version>
-    <name>btsocket</name>
+    <groupId>com.datvexpress.ws</groupId>
+    <artifactId>versatune</artifactId>
+    <version>1.1.0</version>
+    <name>versatune</name>
     <description>Socket and GPIO for Versatuner Spring Boot</description>
     <properties>
         <java.version>11</java.version>
